@@ -79,7 +79,7 @@ class DQN(Algorithm):
 
         pred_value = self.model.value(obs)
         next_pred_value = self.target_model.value(next_obs)
-        next_pred_value_cur = self.target_model.value(next_obs)
+        next_pred_value_cur = self.model.value(next_obs)
         if not self.doubleQ:
             best_v = layers.reduce_max(next_pred_value, dim=1)
             best_v.stop_gradient = True
