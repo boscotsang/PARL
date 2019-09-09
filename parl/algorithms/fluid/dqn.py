@@ -105,7 +105,14 @@ class DQN(Algorithm):
         )
         cost = layers.square_error_cost(pred_action_value, target)
         cost = layers.reduce_mean(cost)
-        optimizer = fluid.optimizer.Adam(self.lr, epsilon=1e-3)
+        optimizer = fluid.optimizer.Adam(
+            self.lr,
+            epsilon=1e-3,
+            learning_rate_schedule="linear",
+            learning_rate_decay_a=self.lr / 6400000,
+            learning_rate_decay_b=5e-5,
+            regularization=fluid.regularizer.L2DecayRegularizer(1e-4),
+        )
         optimizer.minimize(cost)
         return cost
 
