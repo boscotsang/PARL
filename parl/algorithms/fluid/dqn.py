@@ -13,7 +13,8 @@
 # limitations under the License.
 
 import warnings
-warnings.simplefilter('default')
+
+warnings.simplefilter("default")
 
 import copy
 import paddle.fluid as fluid
@@ -21,18 +22,13 @@ from parl.core.fluid.algorithm import Algorithm
 from parl.core.fluid import layers
 from parl.utils.deprecation import deprecated
 
-__all__ = ['DQN']
+__all__ = ["DQN"]
 
 
 class DQN(Algorithm):
-    def __init__(self,
-                 model,
-                 hyperparas=None,
-                 act_dim=None,
-                 gamma=None,
-                 lr=None):
+    def __init__(self, model, hyperparas=None, act_dim=None, gamma=None, lr=None):
         """ DQN algorithm
-        
+
         Args:
             model (parl.Model): model defining forward network of Q function
             hyperparas (dict): (deprecated) dict of hyper parameters.
@@ -47,10 +43,12 @@ class DQN(Algorithm):
             warnings.warn(
                 "the `hyperparas` argument of `__init__` function in `parl.Algorithms.DQN` is deprecated since version 1.2 and will be removed in version 1.3.",
                 DeprecationWarning,
-                stacklevel=2)
-            self.act_dim = hyperparas['action_dim']
-            self.gamma = hyperparas['gamma']
-            self.lr = hyperparas['lr']
+                stacklevel=2,
+            )
+            self.act_dim = hyperparas["action_dim"]
+            self.gamma = hyperparas["gamma"]
+            self.lr = hyperparas["lr"]
+            self.doubleQ = hyperparas.get("doubleQ", False)
         else:
             assert isinstance(act_dim, int)
             assert isinstance(gamma, float)
@@ -58,9 +56,9 @@ class DQN(Algorithm):
             self.act_dim = act_dim
             self.gamma = gamma
             self.lr = lr
+            self.doubleQ = False
 
-    @deprecated(
-        deprecated_in='1.2', removed_in='1.3', replace_function='predict')
+    @deprecated(deprecated_in="1.2", removed_in="1.3", replace_function="predict")
     def define_predict(self, obs):
         """ use value model self.model to predict the action value
         """
@@ -71,8 +69,7 @@ class DQN(Algorithm):
         """
         return self.model.value(obs)
 
-    @deprecated(
-        deprecated_in='1.2', removed_in='1.3', replace_function='learn')
+    @deprecated(deprecated_in="1.2", removed_in="1.3", replace_function="learn")
     def define_learn(self, obs, action, reward, next_obs, terminal):
         return self.learn(obs, action, reward, next_obs, terminal)
 
@@ -82,15 +79,30 @@ class DQN(Algorithm):
 
         pred_value = self.model.value(obs)
         next_pred_value = self.target_model.value(next_obs)
-        best_v = layers.reduce_max(next_pred_value, dim=1)
-        best_v.stop_gradient = True
-        target = reward + (
-            1.0 - layers.cast(terminal, dtype='float32')) * self.gamma * best_v
+        next_pred_value_cur = self.model.value(next_obs)
+        if not self.doubleQ:
+            best_v = layers.reduce_max(next_pred_value, dim=1)
+            best_v.stop_gradient = True
+        else:
+            max_action = layers.reshape(
+                layers.argmax(next_pred_value_cur, axis=1), shape=[-1, 1]
+            )
+            max_action_onehot = layers.one_hot(max_action, self.act_dim)
+            max_action_onehot = layers.cast(max_action_onehot, dtype="float32")
+            best_v = layers.reduce_sum(
+                layers.elementwise_mul(max_action_onehot, next_pred_value), dim=1
+            )
+            best_v.stop_gradient = True
+        target = (
+            reward
+            + (1.0 - layers.cast(terminal, dtype="float32")) * self.gamma * best_v
+        )
 
         action_onehot = layers.one_hot(action, self.act_dim)
-        action_onehot = layers.cast(action_onehot, dtype='float32')
+        action_onehot = layers.cast(action_onehot, dtype="float32")
         pred_action_value = layers.reduce_sum(
-            layers.elementwise_mul(action_onehot, pred_value), dim=1)
+            layers.elementwise_mul(action_onehot, pred_value), dim=1
+        )
         cost = layers.square_error_cost(pred_action_value, target)
         cost = layers.reduce_mean(cost)
         optimizer = fluid.optimizer.Adam(self.lr, epsilon=1e-3)
@@ -104,5 +116,6 @@ class DQN(Algorithm):
             warnings.warn(
                 "the `gpu_id` argument of `sync_target` function in `parl.Algorithms.DQN` is deprecated since version 1.2 and will be removed in version 1.3.",
                 DeprecationWarning,
-                stacklevel=2)
+                stacklevel=2,
+            )
         self.model.sync_weights_to(self.target_model)
