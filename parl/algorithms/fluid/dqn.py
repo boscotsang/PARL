@@ -108,10 +108,7 @@ class DQN(Algorithm):
         optimizer = fluid.optimizer.Adam(
             self.lr,
             epsilon=1e-3,
-            learning_rate_schedule="linear",
-            learning_rate_decay_a=self.lr / 6400000,
-            learning_rate_decay_b=5e-5,
-            regularization=fluid.regularizer.L2DecayRegularizer(1e-4),
+            regularization=fluid.regularizer.L2DecayRegularizer(5e-5),
         )
         optimizer.minimize(cost)
         return cost
