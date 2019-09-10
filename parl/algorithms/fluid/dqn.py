@@ -70,22 +70,22 @@ class DQN(Algorithm):
         return self.model.value(obs)
 
     @deprecated(deprecated_in="1.2", removed_in="1.3", replace_function="learn")
-    def define_learn(self, obs, action, reward, next_obs, terminal):
-        return self.learn(obs, action, reward, next_obs, terminal)
+    def define_learn(self, obs, action, reward, next_obs, terminal, invalid_mask):
+        return self.learn(obs, action, reward, next_obs, terminal, invalid_mask)
 
-    def learn(self, obs, action, reward, next_obs, terminal):
+    def learn(self, obs, action, reward, next_obs, terminal, invalid_mask):
         """ update value model self.model with DQN algorithm
         """
 
         pred_value = self.model.value(obs)
         next_pred_value = self.target_model.value(next_obs)
-        next_pred_value_cur = self.model.value(next_obs)
         if not self.doubleQ:
-            best_v = layers.reduce_max(next_pred_value, dim=1)
+            best_v = layers.reduce_max(next_pred_value + invalid_mask, dim=1)
             best_v.stop_gradient = True
         else:
-            max_action = layers.reshape(
-                layers.argmax(next_pred_value_cur, axis=1), shape=[-1, 1]
+            next_pred_value_cur = self.model.value(next_obs)
+            max_action = layers.unsqueeze(
+                layers.argmax(next_pred_value_cur + invalid_mask, axis=1), axes=[1]
             )
             max_action_onehot = layers.one_hot(max_action, self.act_dim)
             max_action_onehot = layers.cast(max_action_onehot, dtype="float32")
@@ -105,11 +105,7 @@ class DQN(Algorithm):
         )
         cost = layers.square_error_cost(pred_action_value, target)
         cost = layers.reduce_mean(cost)
-        optimizer = fluid.optimizer.Adam(
-            self.lr,
-            epsilon=1e-3,
-            regularization=fluid.regularizer.L2DecayRegularizer(5e-5),
-        )
+        optimizer = fluid.optimizer.Adam(self.lr, epsilon=1e-3)
         optimizer.minimize(cost)
         return cost
 

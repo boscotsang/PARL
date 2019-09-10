@@ -15,28 +15,28 @@
 import numpy as np
 from parl.utils import logger
 
-__all__ = ['ReplayMemory']
+__all__ = ["ReplayMemory"]
 
 
 class ReplayMemory(object):
-    def __init__(self, max_size, obs_dim, act_dim):
+    def __init__(self, max_size, obs_dim, act_dim, real_act_dim):
         self.max_size = int(max_size)
         self.obs_dim = obs_dim
         self.act_dim = act_dim
 
-        self.obs = np.zeros((max_size, obs_dim), dtype='float32')
-        self.action = np.zeros((max_size, act_dim), dtype='float32')
-        self.reward = np.zeros((max_size, ), dtype='float32')
-        self.terminal = np.zeros((max_size, ), dtype='bool')
-        self.next_obs = np.zeros((max_size, obs_dim), dtype='float32')
+        self.obs = np.zeros((max_size, obs_dim), dtype="float32")
+        self.action = np.zeros((max_size, act_dim), dtype="float32")
+        self.reward = np.zeros((max_size,), dtype="float32")
+        self.terminal = np.zeros((max_size,), dtype="bool")
+        self.next_obs = np.zeros((max_size, obs_dim), dtype="float32")
+        self.invalid_mask = np.zeros((max_size, real_act_dim), dtype="float32")
 
         self._curr_size = 0
         self._curr_pos = 0
 
     def sample_batch(self, batch_size):
         # index mapping to avoid sampling saving example
-        batch_idx = np.random.randint(
-            self._curr_size - 300 - 1, size=batch_size)
+        batch_idx = np.random.randint(self._curr_size - 300 - 1, size=batch_size)
         batch_idx = (self._curr_pos + 300 + batch_idx) % self._curr_size
 
         obs = self.obs[batch_idx]
@@ -44,9 +44,10 @@ class ReplayMemory(object):
         action = self.action[batch_idx]
         next_obs = self.next_obs[batch_idx]
         terminal = self.terminal[batch_idx]
-        return obs, action, reward, next_obs, terminal
+        invalid_mask = self.invalid_mask[batch_idx]
+        return obs, action, reward, next_obs, terminal, invalid_mask
 
-    def append(self, obs, act, reward, next_obs, terminal):
+    def append(self, obs, act, reward, next_obs, terminal, invalid_mask):
         if self._curr_size < self.max_size:
             self._curr_size += 1
         self.obs[self._curr_pos] = obs
@@ -54,6 +55,7 @@ class ReplayMemory(object):
         self.reward[self._curr_pos] = reward
         self.next_obs[self._curr_pos] = next_obs
         self.terminal[self._curr_pos] = terminal
+        self.invalid_mask[self._curr_pos] = invalid_mask
         self._curr_pos = (self._curr_pos + 1) % self.max_size
 
     def size(self):
@@ -68,19 +70,20 @@ class ReplayMemory(object):
             reward=self.reward,
             terminal=self.terminal,
             next_obs=self.next_obs,
-            other=other)
+            other=other,
+        )
 
     def load(self, pathname):
         data = np.load(pathname)
-        other = data['other']
+        other = data["other"]
         if int(other[0]) > self.max_size:
-            logger.warn('loading from a bigger size rpm!')
+            logger.warn("loading from a bigger size rpm!")
         self._curr_size = min(int(other[0]), self.max_size)
         self._curr_pos = min(int(other[1]), self.max_size - 1)
 
-        self.obs[:self._curr_size] = data['obs'][:self._curr_size]
-        self.action[:self._curr_size] = data['action'][:self._curr_size]
-        self.reward[:self._curr_size] = data['reward'][:self._curr_size]
-        self.terminal[:self._curr_size] = data['terminal'][:self._curr_size]
-        self.next_obs[:self._curr_size] = data['next_obs'][:self._curr_size]
+        self.obs[: self._curr_size] = data["obs"][: self._curr_size]
+        self.action[: self._curr_size] = data["action"][: self._curr_size]
+        self.reward[: self._curr_size] = data["reward"][: self._curr_size]
+        self.terminal[: self._curr_size] = data["terminal"][: self._curr_size]
+        self.next_obs[: self._curr_size] = data["next_obs"][: self._curr_size]
         logger.info("[load rpm]memory loade from {}".format(pathname))
